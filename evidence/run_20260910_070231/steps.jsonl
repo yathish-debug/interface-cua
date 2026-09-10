@@ -1,0 +1,4 @@
+{"step": 1, "screenshot": "evidence/run_20260910_070231/step_01.png", "rationale": "", "tool": "type", "args": {"ref": "e0", "text": "12345"}}
+{"step": 2, "screenshot": "evidence/run_20260910_070231/step_02.png", "rationale": "", "tool": "click", "args": {"ref": "e1"}}
+{"step": 3, "screenshot": "evidence/run_20260910_070231/step_03.png", "rationale": "", "tool": "finish", "args": {"success": true, "reason": "Successfully looked up member 12345 and found their current savings balance", "outputs": {"member_id": "12345", "name": "Asha Rao", "status": "Active", "savings_balance": "$4,250.00"}}}
+{"step": 3, "event": "finish", "success": true, "outputs": {"member_id": "12345", "name": "Asha Rao", "status": "Active", "savings_balance": "$4,250.00"}, "reason": "Successfully looked up member 12345 and found their current savings balance"}

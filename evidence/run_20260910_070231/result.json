@@ -1,0 +1,12 @@
+{
+  "success": true,
+  "outputs": {
+    "member_id": "12345",
+    "name": "Asha Rao",
+    "status": "Active",
+    "savings_balance": "$4,250.00"
+  },
+  "reason": "Successfully looked up member 12345 and found their current savings balance",
+  "goal": "Look up member 12345 and read their current savings balance",
+  "steps": 3
+}
