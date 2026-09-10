@@ -1,0 +1,6 @@
+{"step": 1, "screenshot": "evidence/run_20260910_203538/step_01.png", "rationale": "", "tool": "type", "args": {"ref": "e0", "text": "12345"}}
+{"step": 1, "event": "acted", "tool": "type", "locator": {"role": "textbox", "name": "Member ID"}, "value": "12345"}
+{"step": 2, "screenshot": "evidence/run_20260910_203538/step_02.png", "rationale": "", "tool": "click", "args": {"ref": "e1"}}
+{"step": 2, "event": "acted", "tool": "click", "locator": {"role": "button", "name": "Look Up Member"}, "value": null}
+{"step": 3, "screenshot": "evidence/run_20260910_203538/step_03.png", "rationale": "", "tool": "finish", "args": {"success": true, "reason": "Successfully looked up member 12345 and found their savings balance", "outputs": {"member_id": "12345", "name": "Asha Rao", "status": "Active", "savings_balance": "$4,250.00"}}}
+{"step": 3, "event": "finish", "success": true, "outputs": {"member_id": "12345", "name": "Asha Rao", "status": "Active", "savings_balance": "$4,250.00"}, "reason": "Successfully looked up member 12345 and found their savings balance"}

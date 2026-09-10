@@ -82,6 +82,9 @@ def run_goal(surface: Surface, goal: str, max_steps: int = 15,
         try:
             action = Action(kind=name, ref=args.get("ref"), text=args.get("text"))
             surface.act(action)
+            log({"step": step, "event": "acted", "tool": name,
+                 "locator": getattr(surface, "last_locator", None),
+                 "value": args.get("text")})
             obs = surface.observe()
             result_text = "Action done. New screen:\n\n" + obs.to_prompt()
         except Exception as exc:

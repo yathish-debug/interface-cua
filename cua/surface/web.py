@@ -25,6 +25,7 @@ class WebSurface(Surface):
         self._page.goto(url, wait_until="domcontentloaded")
         # ref -> (role, name) so act() can re-locate what observe() saw.
         self._ref_map: dict[str, tuple[str, str]] = {}
+        self.last_locator: dict | None = None
 
     def observe(self) -> Observation:
         # Let transient loads settle without a blind sleep.
@@ -94,6 +95,7 @@ class WebSurface(Surface):
             if action.ref not in self._ref_map:
                 raise ValueError(f"Unknown ref {action.ref!r} — observe() again first.")
             role, name = self._ref_map[action.ref]
+            self.last_locator = {"role": role, "name": name}   # <-- durable identity for the recorder
             locator = self._page.get_by_role(role, name=name, exact=True)
             if locator.count() == 0:            # fallback: loosen exactness
                 locator = self._page.get_by_role(role, name=name)

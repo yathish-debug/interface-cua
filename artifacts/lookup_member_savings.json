@@ -1,0 +1,103 @@
+{
+  "schema_version": "1.0",
+  "capability_id": "lookup_member_savings",
+  "version": "1.0.0",
+  "title": "Look up member and read savings balance",
+  "description": "Look up member 12345 and read their current savings balance",
+  "app_id": "core_servicing_console",
+  "entry_url": "http://localhost:8000",
+  "inputs": [
+    {
+      "name": "member_id",
+      "type": "string",
+      "required": true,
+      "description": "Supplied per invocation: member_id",
+      "sensitive": true
+    }
+  ],
+  "outputs": [
+    {
+      "name": "member_id",
+      "type": "string",
+      "description": "Extracted member_id",
+      "source": null,
+      "from_text_pattern": null
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "description": "Extracted name",
+      "source": null,
+      "from_text_pattern": null
+    },
+    {
+      "name": "status",
+      "type": "string",
+      "description": "Extracted status",
+      "source": null,
+      "from_text_pattern": null
+    },
+    {
+      "name": "savings_balance",
+      "type": "string",
+      "description": "Extracted savings_balance",
+      "source": null,
+      "from_text_pattern": "\\$[\\d,]+\\.\\d{2}"
+    }
+  ],
+  "steps": [
+    {
+      "index": 0,
+      "action": "navigate",
+      "locator": null,
+      "value": null,
+      "url": "http://localhost:8000",
+      "risk": "safe",
+      "description": "Open core_servicing_console"
+    },
+    {
+      "index": 1,
+      "action": "type",
+      "locator": {
+        "strategy": "role_name",
+        "role": "textbox",
+        "name": "Member ID",
+        "text": null,
+        "nth": null,
+        "robustness_note": "Accessibility role \"textbox\" + accessible name \"Member ID\" — the same label a human/screen-reader sees. Survives cosmetic and DOM changes; no CSS or test-ID dependency.",
+        "fallbacks": []
+      },
+      "value": "{{member_id}}",
+      "url": null,
+      "risk": "safe",
+      "description": "type \"Member ID\""
+    },
+    {
+      "index": 2,
+      "action": "click",
+      "locator": {
+        "strategy": "role_name",
+        "role": "button",
+        "name": "Look Up Member",
+        "text": null,
+        "nth": null,
+        "robustness_note": "Accessibility role \"button\" + accessible name \"Look Up Member\" — the same label a human/screen-reader sees. Survives cosmetic and DOM changes; no CSS or test-ID dependency.",
+        "fallbacks": []
+      },
+      "value": null,
+      "url": null,
+      "risk": "safe",
+      "description": "click \"Look Up Member\""
+    }
+  ],
+  "success": {
+    "kind": "text_present",
+    "value": "Savings Balance",
+    "role": null,
+    "name": null,
+    "description": "Member detail screen reached"
+  },
+  "source_run": "run_20260910_203538",
+  "created_at": "2026-09-10T20:48:30.731895+00:00",
+  "status": "draft"
+}
