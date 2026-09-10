@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+  <p><a href="/">&laquo; Back to lookup</a></p>
+  <p><b>Member Record: {{ member_id }}</b></p>
+  <table>
+    <tr><td class="lbl">Name</td><td>{{ member.name }}</td></tr>
+    <tr><td class="lbl">Status</td><td>{{ member.status }}</td></tr>
+    <tr><td class="lbl">Savings Balance</td><td>$ {{ member.savings }}</td></tr>
+  </table>
+  <p style="margin-top:16px;">
+    <a href="/member/{{ member_id }}/open-subaccount" class="btn">Open Sub-Account</a>
+  </p>
+{% endblock %}

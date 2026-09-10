@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MidState CU — Core Console</title>
+  <style>
+    body { font-family: Verdana, Arial, sans-serif; font-size: 13px; background:#eef1f4; margin:0; }
+    .frame { width: 720px; margin: 24px auto; background:#fff; border:1px solid #b8c2cc; }
+    .titlebar { background:#1f3a5f; color:#fff; padding:8px 12px; font-weight:bold; }
+    .body { padding: 16px; }
+    .err { color:#a10000; background:#ffecec; border:1px solid #ffb3b3; padding:6px 10px; margin-bottom:10px; }
+    table { border-collapse: collapse; }
+    td { padding: 4px 8px; }
+    .lbl { color:#333; text-align:right; white-space:nowrap; }
+    input, select { font-size:13px; padding:3px; }
+    .btn { background:#2b5c9c; color:#fff; border:0; padding:6px 14px; cursor:pointer; text-decoration:none; }
+    a { color:#1f3a5f; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <div class="titlebar">MidState Credit Union &mdash; Core Servicing Console</div>
+    <div class="body">{% block content %}{% endblock %}</div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+  <p><a href="/member/{{ member_id }}">&laquo; Back to member</a></p>
+  {% if error %}<div class="err">{{ error }}</div>{% endif %}
+  <p><b>Open Sub-Account for {{ member.name }} ({{ member_id }})</b></p>
+  <form method="post" action="/member/{{ member_id }}/open-subaccount">
+    <table>
+      <tr>
+        <td class="lbl"><label for="atype">Account Type</label></td>
+        <td>
+          <select id="atype" name="account_type">
+            <option value="">-- select --</option>
+            <option value="Savings">Savings</option>
+            <option value="Checking">Checking</option>
+            <option value="Money Market">Money Market</option>
+          </select>
+        </td>
+      </tr>
+      <tr>
+        <td class="lbl"><label for="dep">Initial Deposit</label></td>
+        <td><input type="text" id="dep" name="initial_deposit" autocomplete="off"></td>
+      </tr>
+      <tr><td></td><td><button class="btn" type="submit">Submit Application</button></td></tr>
+    </table>
+  </form>
+{% endblock %}

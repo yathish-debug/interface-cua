@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+  <p><b>Sub-Account Opened</b></p>
+  <table>
+    <tr><td class="lbl">Member</td><td>{{ member.name }} ({{ member_id }})</td></tr>
+    <tr><td class="lbl">Account Type</td><td>{{ account_type }}</td></tr>
+    <tr><td class="lbl">Initial Deposit</td><td>$ {{ initial_deposit }}</td></tr>
+    <tr><td class="lbl">New Sub-Account #</td><td>{{ sub_account_number }}</td></tr>
+  </table>
+  <p style="margin-top:16px; color:#1a7d1a;">Confirmation: the sub-account has been created successfully.</p>
+{% endblock %}

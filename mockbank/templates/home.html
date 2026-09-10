@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+  {% if error %}<div class="err">{{ error }}</div>{% endif %}
+  <p><b>Member Lookup</b></p>
+  <form method="post" action="/lookup">
+    <table>
+      <tr>
+        <td class="lbl"><label for="mid">Member ID</label></td>
+        <td><input type="text" id="mid" name="member_id" autocomplete="off"></td>
+      </tr>
+      <tr><td></td><td><button class="btn" type="submit">Look Up Member</button></td></tr>
+    </table>
+  </form>
+  <p style="color:#888; font-size:11px;">Try: 12345, 23456, 34567. Unknown IDs return "not found".</p>
+{% endblock %}
