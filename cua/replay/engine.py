@@ -3,6 +3,10 @@
 Loads the artifact, executes each step with stable role+name locators,
 classifies exceptional states after every step, verifies the checkpoint,
 extracts declared outputs, and returns a typed ReplayResult.
+
+Phase 4: every step passes through the policy gate first (allowlist +
+risk classification) at the same choke point discovery uses. Persisted
+logs carry presence/keys only — never raw regulated data.
 """
 from __future__ import annotations
 import json, os, re
@@ -16,6 +20,8 @@ from playwright.sync_api import (
 from cua.artifact.schema import Capability, Locator, Step, ActionKind, Checkpoint
 from cua.replay.result import ReplayResult, Outcome
 from cua.replay.detectors import detectors_for, DetKind, Detector
+from cua.safety.policy import Policy, Decision
+from cua.safety.redaction import presence as _redact
 
 STEP_TIMEOUT_MS = 5000
 
@@ -33,11 +39,6 @@ def _fill(value: str | None, inputs: dict[str, str]) -> str | None:
     for k, v in inputs.items():
         out = out.replace(f"{{{{{k}}}}}", str(v))
     return out
-
-
-def _redact(outputs: dict) -> dict:
-    # logs never carry raw values (regulated data) — only presence
-    return {k: ("<present>" if v not in (None, "") else "<empty>") for k, v in outputs.items()}
 
 
 class ReplaySurface:
@@ -151,8 +152,10 @@ def _extract(surface: ReplaySurface, cap: Capability) -> dict:
     return out
 
 
-def replay(artifact_path: str, inputs: dict[str, str], headed: bool = False) -> ReplayResult:
+def replay(artifact_path: str, inputs: dict[str, str], headed: bool = False,
+           policy_path: str = "config/policy.json") -> ReplayResult:
     cap = Capability.model_validate_json(open(artifact_path).read())
+    policy = Policy.load(policy_path)
 
     required = {i.name for i in cap.inputs if i.required}
     missing = required - set(inputs)
@@ -186,6 +189,32 @@ def replay(artifact_path: str, inputs: dict[str, str], headed: bool = False) -> 
     try:
         for step in cap.steps:
             attempted += 1
+
+            # --- policy gate: same choke point discovery uses ---
+            tname = step.locator.name if step.locator else None
+            pr = policy.evaluate(step.action.value, url=step.url,
+                                 target_name=tname,
+                                 declared_risk=getattr(step, "risk", None))
+            log({"event": "policy", "step": step.index, "action": step.action.value,
+                 "decision": pr.decision.value, "risk": pr.risk.value, "reason": pr.reason})
+            if pr.decision is Decision.block:
+                surface.screenshot(os.path.join(ev, f"policy_block_{step.index}.png"))
+                return ReplayResult(
+                    outcome=Outcome.failure, capability_id=cap.capability_id,
+                    capability_version=cap.version, failed_step_index=step.index,
+                    expected="action permitted by policy", observed=pr.reason,
+                    error=f"policy_block: {pr.reason}", steps_attempted=attempted,
+                    recoveries=recoveries, evidence_dir=ev)
+            if pr.decision is Decision.confirm:
+                surface.screenshot(os.path.join(ev, f"needs_approval_{step.index}.png"))
+                return ReplayResult(
+                    outcome=Outcome.failure, capability_id=cap.capability_id,
+                    capability_version=cap.version, failed_step_index=step.index,
+                    needs_human=True, expected="approved irreversible action",
+                    observed=pr.reason, error=f"needs_approval: {pr.reason}",
+                    steps_attempted=attempted, recoveries=recoveries, evidence_dir=ev)
+
+            # --- act ---
             try:
                 _run_step(surface, step, inputs)
             except LookupError as e:

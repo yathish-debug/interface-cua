@@ -17,9 +17,10 @@ def main():
     ap.add_argument("--artifact", required=True)
     ap.add_argument("--param", action="append", default=[], help="name=value (repeatable)")
     ap.add_argument("--headed", action="store_true", help="show the browser")
+    ap.add_argument("--policy", default="config/policy.json", help="path to policy config")
     a = ap.parse_args()
 
-    r = replay(a.artifact, _params(a.param), headed=a.headed)
+    r = replay(a.artifact, _params(a.param), headed=a.headed, policy_path=a.policy)
     print("=" * 50)
     print(f"OUTCOME:  {r.outcome.value}")
     if r.outcome.value == "success":

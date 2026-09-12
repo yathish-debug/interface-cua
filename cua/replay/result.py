@@ -22,6 +22,7 @@ class ReplayResult(BaseModel):
     outputs: dict[str, Any] = Field(default_factory=dict)      # on success
     business_code: str | None = None       # "no_such_member", "account_frozen", ...
     business_message: str | None = None
+    needs_human: bool = False 
     failed_step_index: int | None = None   # on failure
     expected: str | None = None
     observed: str | None = None

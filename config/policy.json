@@ -1,0 +1,11 @@
+{
+  "version": "1.0",
+  "allowed_hosts": ["localhost:8000", "127.0.0.1:8000"],
+  "allowed_actions": ["navigate", "type", "click"],
+  "irreversible": {
+    "route_patterns": ["open-subaccount", "transfer", "close-account", "delete"],
+    "name_patterns": ["open sub-account", "confirm", "submit", "transfer", "pay", "delete"]
+  },
+  "allow_irreversible": false
+}
+

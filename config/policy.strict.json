@@ -1,0 +1,7 @@
+{
+  "version": "1.0",
+  "allowed_hosts": ["example.com"],
+  "allowed_actions": ["navigate", "type", "click"],
+  "irreversible": { "route_patterns": [], "name_patterns": [] },
+  "allow_irreversible": false
+}
