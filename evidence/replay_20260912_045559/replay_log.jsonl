@@ -1,0 +1,5 @@
+{"event": "start", "capability": "lookup_member_savings", "version": "1.0.0", "inputs": ["member_id"]}
+{"event": "step_done", "step": 0, "action": "navigate"}
+{"event": "step_done", "step": 1, "action": "type"}
+{"event": "step_done", "step": 2, "action": "click"}
+{"event": "business_outcome", "code": "no_such_member", "step": 2}

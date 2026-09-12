@@ -28,21 +28,21 @@
       "type": "string",
       "description": "Extracted name",
       "source": null,
-      "from_text_pattern": null
+      "from_text_pattern": "Name\\s+([^\\n]+)"
     },
     {
       "name": "status",
       "type": "string",
       "description": "Extracted status",
       "source": null,
-      "from_text_pattern": null
+      "from_text_pattern": "Status\\s+([^\\n]+)"
     },
     {
       "name": "savings_balance",
       "type": "string",
       "description": "Extracted savings_balance",
       "source": null,
-      "from_text_pattern": "\\$[\\d,]+\\.\\d{2}"
+      "from_text_pattern": "\\$\\s*[\\d,]+\\.\\d{2}"
     }
   ],
   "steps": [
@@ -64,7 +64,7 @@
         "name": "Member ID",
         "text": null,
         "nth": null,
-        "robustness_note": "Accessibility role \"textbox\" + accessible name \"Member ID\" — the same label a human/screen-reader sees. Survives cosmetic and DOM changes; no CSS or test-ID dependency.",
+        "robustness_note": "Accessibility role \"textbox\" + accessible name \"Member ID\" \u2014 the same label a human/screen-reader sees. Survives cosmetic and DOM changes; no CSS or test-ID dependency.",
         "fallbacks": []
       },
       "value": "{{member_id}}",
@@ -81,7 +81,7 @@
         "name": "Look Up Member",
         "text": null,
         "nth": null,
-        "robustness_note": "Accessibility role \"button\" + accessible name \"Look Up Member\" — the same label a human/screen-reader sees. Survives cosmetic and DOM changes; no CSS or test-ID dependency.",
+        "robustness_note": "Accessibility role \"button\" + accessible name \"Look Up Member\" \u2014 the same label a human/screen-reader sees. Survives cosmetic and DOM changes; no CSS or test-ID dependency.",
         "fallbacks": []
       },
       "value": null,
