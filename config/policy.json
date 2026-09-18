@@ -5,7 +5,7 @@
   "irreversible": {
     "route_patterns": ["open-subaccount", "transfer", "close-account", "delete"],
     "name_patterns": ["open sub-account", "confirm", "submit", "transfer", "pay", "delete"]
-  },
+                  },
   "allow_irreversible": false
 }
 

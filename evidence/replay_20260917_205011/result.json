@@ -1,0 +1,20 @@
+{
+  "outcome": "success",
+  "capability_id": "lookup_member_savings",
+  "capability_version": "1.0.0",
+  "outputs": {
+    "name": "Asha Rao",
+    "status": "Active",
+    "savings_balance": "$ 4,250.00"
+  },
+  "business_code": null,
+  "business_message": null,
+  "needs_human": false,
+  "failed_step_index": null,
+  "expected": null,
+  "observed": null,
+  "error": null,
+  "steps_attempted": 3,
+  "recoveries": [],
+  "evidence_dir": "evidence/replay_20260917_205011"
+}

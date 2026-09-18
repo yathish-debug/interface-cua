@@ -1,0 +1,16 @@
+{
+  "outcome": "failure",
+  "capability_id": "lookup_member_savings",
+  "capability_version": "1.0.0",
+  "outputs": {},
+  "business_code": null,
+  "business_message": null,
+  "needs_human": false,
+  "failed_step_index": 0,
+  "expected": "action permitted by policy",
+  "observed": "host 'localhost:8000' not in allowlist",
+  "error": "policy_block: host 'localhost:8000' not in allowlist",
+  "steps_attempted": 1,
+  "recoveries": [],
+  "evidence_dir": "evidence/replay_20260917_210103"
+}

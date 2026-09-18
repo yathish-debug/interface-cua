@@ -112,6 +112,11 @@ class WebSurface(Surface):
 
     def screenshot(self, path: str) -> None:
         self._page.screenshot(path=path, full_page=True)
+    def url(self) -> str:
+        return self.page.url
+
+    def title(self) -> str:
+        return self.page.title()
 
     def close(self) -> None:
         try:

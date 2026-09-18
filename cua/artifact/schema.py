@@ -7,9 +7,8 @@ transcript on purpose — the transcript is evidence, this is the API.
 """
 from __future__ import annotations
 from enum import Enum
-from typing import Literal
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
-
 ARTIFACT_SCHEMA_VERSION = "1.0"
 
 
@@ -69,6 +68,7 @@ class Step(BaseModel):
     url: str | None = None           # for navigate
     risk: RiskClass = RiskClass.safe
     description: str = ""
+    risk: Optional[str] = None   # "irreversible" if the step declares itself risky
 
 
 class Capability(BaseModel):

@@ -1,0 +1,2 @@
+{"event": "start", "capability": "lookup_member_savings", "version": "1.0.0", "inputs": ["member_id"]}
+{"event": "policy", "step": 0, "action": "navigate", "decision": "block", "risk": "safe", "reason": "host 'localhost:8000' not in allowlist"}

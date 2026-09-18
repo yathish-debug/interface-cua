@@ -1,0 +1,8 @@
+{"event": "start", "capability": "lookup_member_savings", "version": "1.0.0", "inputs": ["member_id"]}
+{"event": "policy", "step": 0, "action": "navigate", "decision": "allow", "risk": "safe", "reason": "safe action within allowlist"}
+{"event": "step_done", "step": 0, "action": "navigate"}
+{"event": "policy", "step": 1, "action": "type", "decision": "allow", "risk": "safe", "reason": "safe action within allowlist"}
+{"event": "step_done", "step": 1, "action": "type"}
+{"event": "policy", "step": 2, "action": "click", "decision": "allow", "risk": "safe", "reason": "safe action within allowlist"}
+{"event": "step_done", "step": 2, "action": "click"}
+{"event": "success", "outputs": {"name": "<present>", "status": "<present>", "savings_balance": "<present>"}}

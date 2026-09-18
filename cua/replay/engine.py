@@ -7,6 +7,11 @@ extracts declared outputs, and returns a typed ReplayResult.
 Phase 4: every step passes through the policy gate first (allowlist +
 risk classification) at the same choke point discovery uses. Persisted
 logs carry presence/keys only — never raw regulated data.
+
+Phase 5: when the policy flags an irreversible step (Decision.confirm),
+replay does NOT tear down — it pauses in place (browser stays open),
+cedes control to a human on the same live session, blocks for the
+operator, then resumes (approve / done-manually / abort).
 """
 from __future__ import annotations
 import json, os, re
@@ -22,6 +27,9 @@ from cua.replay.result import ReplayResult, Outcome
 from cua.replay.detectors import detectors_for, DetKind, Detector
 from cua.safety.policy import Policy, Decision
 from cua.safety.redaction import presence as _redact
+from cua.escalation.intervention import (
+    InterventionRequest, Resolution, SessionControl, escalate,
+)
 
 STEP_TIMEOUT_MS = 5000
 
@@ -60,6 +68,9 @@ class ReplaySurface:
 
     def url(self) -> str:
         return self._page.url
+
+    def title(self) -> str:
+        return self._page.title()
 
     def resolve(self, loc: Locator) -> PWLocator:
         for strat in [loc] + loc.fallbacks:
@@ -174,6 +185,7 @@ def replay(artifact_path: str, inputs: dict[str, str], headed: bool = False,
 
     dets = detectors_for(cap.app_id)
     surface = ReplaySurface(headed=headed)
+    control = SessionControl(log)
     recoveries: list[str] = []
     attempted = 0
 
@@ -205,14 +217,34 @@ def replay(artifact_path: str, inputs: dict[str, str], headed: bool = False,
                     expected="action permitted by policy", observed=pr.reason,
                     error=f"policy_block: {pr.reason}", steps_attempted=attempted,
                     recoveries=recoveries, evidence_dir=ev)
+
+            # --- Phase 5: irreversible step -> escalate on the SAME live session ---
             if pr.decision is Decision.confirm:
-                surface.screenshot(os.path.join(ev, f"needs_approval_{step.index}.png"))
-                return ReplayResult(
-                    outcome=Outcome.failure, capability_id=cap.capability_id,
-                    capability_version=cap.version, failed_step_index=step.index,
-                    needs_human=True, expected="approved irreversible action",
-                    observed=pr.reason, error=f"needs_approval: {pr.reason}",
-                    steps_attempted=attempted, recoveries=recoveries, evidence_dir=ev)
+                shot = os.path.join(ev, f"needs_approval_{step.index}.png")
+                surface.screenshot(shot)
+                req = InterventionRequest(
+                    capability_id=cap.capability_id,
+                    capability_version=cap.version, goal=cap.description,
+                    step_index=step.index, action=step.action.value,
+                    target_name=tname, reason=pr.reason, screenshot=shot,
+                    page_url=surface.url(), page_title=surface.title())
+                print(f"\n⚠  ESCALATION at step {step.index}: {pr.reason}"
+                      f"\n   operator: python scripts/operator_console.py --run {ev}\n")
+                resp = escalate(ev, req, control, log)   # blocks; page stays open
+                if resp.resolution is Resolution.aborted:
+                    surface.screenshot(os.path.join(ev, f"aborted_{step.index}.png"))
+                    return ReplayResult(
+                        outcome=Outcome.failure, capability_id=cap.capability_id,
+                        capability_version=cap.version, failed_step_index=step.index,
+                        needs_human=True, expected="approved irreversible action",
+                        observed=f"operator aborted: {resp.notes}",
+                        error="operator_aborted", steps_attempted=attempted,
+                        recoveries=recoveries, evidence_dir=ev)
+                if resp.resolution is Resolution.completed:
+                    log({"event": "human_completed_step", "step": step.index})
+                    continue              # human did it on the live session; checkpoint verifies
+                log({"event": "human_approved_step", "step": step.index})
+                # approved -> fall through to the act block below and execute it
 
             # --- act ---
             try:

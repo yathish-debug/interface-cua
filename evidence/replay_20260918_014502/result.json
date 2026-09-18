@@ -1,0 +1,16 @@
+{
+  "outcome": "failure",
+  "capability_id": "lookup_member_savings",
+  "capability_version": "1.0.0",
+  "outputs": {},
+  "business_code": null,
+  "business_message": null,
+  "needs_human": false,
+  "failed_step_index": 2,
+  "expected": "element button/Look Up Member",
+  "observed": "element not found",
+  "error": "No element for role='button' name='Look Up Member'",
+  "steps_attempted": 3,
+  "recoveries": [],
+  "evidence_dir": "evidence/replay_20260918_014502"
+}
