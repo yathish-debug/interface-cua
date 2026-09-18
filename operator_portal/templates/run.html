@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Run {{ run_name }}{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <a href="/">← Back to all runs</a>
+    <br><br>
+    <h1>{{ run_name }}</h1>
+    <p class="muted">
+      Review the automation history, control handoff, and any pending approval.
+    </p>
+  </div>
+
+  {% if intervention and not response %}
+    <div class="card">
+      <h2>Human approval required</h2>
+
+      <p>
+        <span class="badge badge-waiting">Automation is paused</span>
+      </p>
+
+      <table>
+        <tr>
+          <th>Capability</th>
+          <td>{{ intervention.capability_id }} v{{ intervention.capability_version }}</td>
+        </tr>
+        <tr>
+          <th>Step</th>
+          <td>
+            {{ intervention.step_index }} —
+            {{ intervention.action }}
+            {% if intervention.target_name %}
+              → {{ intervention.target_name }}
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th>Reason</th>
+          <td>{{ intervention.reason }}</td>
+        </tr>
+        <tr>
+          <th>Current page</th>
+          <td>{{ intervention.page_title }}<br>{{ intervention.page_url }}</td>
+        </tr>
+      </table>
+
+      <br>
+
+      <img
+        class="screenshot"
+        src="/{{ intervention.screenshot }}"
+        alt="Screenshot when automation paused"
+      >
+
+      <br><br>
+
+      <form method="post" action="/run/{{ run_name }}/resolve">
+        <label for="notes"><strong>What did you do?</strong></label>
+        <textarea
+          id="notes"
+          name="notes"
+          placeholder="Example: Reviewed the request and approved automation to continue."
+        ></textarea>
+
+        <button class="button approve" name="resolution" value="approved">
+          Approve and resume
+        </button>
+
+        <button class="button manual" name="resolution" value="completed">
+          I completed it manually
+        </button>
+
+        <button class="button abort" name="resolution" value="aborted">
+          Abort task
+        </button>
+      </form>
+    </div>
+
+  {% elif response %}
+    <div class="card">
+      <h2>Intervention resolved</h2>
+
+      <p>
+        <span class="badge badge-complete">
+          {{ response.resolution.value }}
+        </span>
+      </p>
+
+      <p><strong>Operator:</strong> {{ response.operator }}</p>
+      <p><strong>Notes:</strong> {{ response.notes or "No notes provided." }}</p>
+    </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Audit trail</h2>
+
+    {% if audit_rows %}
+      {% for row in audit_rows %}
+        <div class="timeline-item">
+          <strong>{{ row.event_type }}</strong>
+          <span class="muted">— {{ row.actor }} — {{ row.ts }}</span>
+
+          {% if row.action %}
+            <br>Action: {{ row.action }}
+          {% endif %}
+
+          {% if row.decision %}
+            <br>Decision: {{ row.decision }}
+          {% endif %}
+
+          {% if row.detail %}
+            <br>{{ row.detail }}
+          {% endif %}
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">No audit events found.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Control handoff</h2>
+
+    {% if control_rows %}
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Transition</th>
+            <th>Controller</th>
+            <th>Reason</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for row in control_rows %}
+            <tr>
+              <td>{{ row.ts }}</td>
+              <td>{{ row.from_state }} → {{ row.to_state }}</td>
+              <td>{{ row.controller }}</td>
+              <td>{{ row.reason }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">
+        No human handoff occurred. Automation kept control.
+      </p>
+    {% endif %}
+  </div>
+{% endblock %}

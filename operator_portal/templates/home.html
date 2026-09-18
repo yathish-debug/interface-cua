@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Automation Runs{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <h1>Automation Runs</h1>
+    <p class="muted">
+      Review completed runs, inspect their audit trail, and respond to any
+      automation waiting for human approval.
+    </p>
+  </div>
+
+  <div class="card">
+    {% if runs %}
+      <table>
+        <thead>
+          <tr>
+            <th>Run</th>
+            <th>Status</th>
+            <th>Open</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for run in runs %}
+            <tr>
+              <td><strong>{{ run.name }}</strong></td>
+
+              <td>
+                {% if run.waiting_for_human %}
+                  <span class="badge badge-waiting">
+                    Waiting for human approval
+                  </span>
+                {% elif run.has_result %}
+                  <span class="badge badge-complete">
+                    Completed
+                  </span>
+                {% else %}
+                  <span class="badge badge-neutral">
+                    In progress
+                  </span>
+                {% endif %}
+              </td>
+
+              <td>
+                <a class="button" href="/run/{{ run.name }}">
+                  View run
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">No replay runs have been created yet.</p>
+    {% endif %}
+  </div>
+{% endblock %}
