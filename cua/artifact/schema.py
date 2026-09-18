@@ -6,15 +6,21 @@ and the checkpoint that proves success. Decoupled from the raw model
 transcript on purpose — the transcript is evidence, this is the API.
 """
 from __future__ import annotations
+
 from enum import Enum
 from typing import Literal, Optional
+
 from pydantic import BaseModel, Field
+
+
 ARTIFACT_SCHEMA_VERSION = "1.0"
 
 
 class RiskClass(str, Enum):
-    safe = "safe"      # reversible / read-only: navigate, type, read
-    risky = "risky"    # irreversible / state-changing: submit, confirm, delete
+    """Labels used while recording a capability."""
+
+    safe = "safe"
+    risky = "risky"
 
 
 class ActionKind(str, Enum):
@@ -26,19 +32,25 @@ class ActionKind(str, Enum):
 
 class Locator(BaseModel):
     """How replay re-finds a control. Try primary, then fallbacks in order."""
-    strategy: Literal["role_name", "text", "label", "placeholder", "nth_role"] = "role_name"
+
+    strategy: Literal[
+        "role_name", "text", "label", "placeholder", "nth_role"
+    ] = "role_name"
     role: str | None = None
-    name: str | None = None          # accessible name — the human-visible label
+    name: str | None = None
     text: str | None = None
-    nth: int | None = None           # disambiguate when a name repeats
-    robustness_note: str = ""        # WHY this is stable — for reviewers
+    nth: int | None = None
+    robustness_note: str = ""
     fallbacks: list["Locator"] = Field(default_factory=list)
 
 
 class Checkpoint(BaseModel):
     """A condition asserted to prove we reached the intended state."""
-    kind: Literal["url_contains", "text_present", "role_name_present"] = "text_present"
-    value: str | None = None         # substring / expected text
+
+    kind: Literal[
+        "url_contains", "text_present", "role_name_present"
+    ] = "text_present"
+    value: str | None = None
     role: str | None = None
     name: str | None = None
     description: str = ""
@@ -49,43 +61,42 @@ class InputParam(BaseModel):
     type: Literal["string", "number", "boolean"] = "string"
     required: bool = True
     description: str = ""
-    sensitive: bool = False          # if true: never logged/echoed on replay
+    sensitive: bool = False
 
 
 class OutputField(BaseModel):
     name: str
     type: Literal["string", "number", "boolean"] = "string"
     description: str = ""
-    source: Locator | None = None            # read from this control, or...
-    from_text_pattern: str | None = None     # ...regex over visible text
+    source: Locator | None = None
+    from_text_pattern: str | None = None
 
 
 class Step(BaseModel):
     index: int
     action: ActionKind
-    locator: Locator | None = None   # None for navigate
-    value: str | None = None         # templated "{{member_id}}" or literal
-    url: str | None = None           # for navigate
-    risk: RiskClass = RiskClass.safe
+    locator: Locator | None = None
+    value: str | None = None
+    url: str | None = None
     description: str = ""
-    risk: Optional[str] = None   # "irreversible" if the step declares itself risky
+    risk: Optional[str] = None  # e.g. "irreversible" → needs human approval
 
 
 class Capability(BaseModel):
     schema_version: str = ARTIFACT_SCHEMA_VERSION
-    capability_id: str               # stable slug: "lookup_member_savings"
-    version: str = "1.0.0"           # this capability's own semver
+    capability_id: str
+    version: str = "1.0.0"
     title: str
     description: str = ""
-    app_id: str                      # logical app, generic across tenants
-    entry_url: str                   # tenant-specific value lives here
+    app_id: str
+    entry_url: str
     inputs: list[InputParam] = Field(default_factory=list)
     outputs: list[OutputField] = Field(default_factory=list)
     steps: list[Step] = Field(default_factory=list)
-    success: Checkpoint              # final condition replay verifies
-    source_run: str = ""             # evidence run it was recorded from
+    success: Checkpoint
+    source_run: str = ""
     created_at: str = ""
     status: Literal["draft", "approved"] = "draft"
 
 
-Locator.model_rebuild()   # resolve the self-referential fallbacks
+Locator.model_rebuild()
