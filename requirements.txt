@@ -6,3 +6,4 @@ playwright
 pydantic
 python-dotenv
 anthropic
+pytest
