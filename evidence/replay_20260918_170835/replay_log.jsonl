@@ -1,0 +1,10 @@
+{"event": "start", "capability": "lookup_member_savings", "version": "1.0.0", "inputs": ["member_id"]}
+{"event": "policy", "step": 0, "action": "navigate", "decision": "allow", "risk": "safe", "reason": "safe action within allowlist"}
+{"event": "step_done", "step": 0, "action": "navigate"}
+{"event": "policy", "step": 1, "action": "type", "decision": "allow", "risk": "safe", "reason": "safe action within allowlist"}
+{"event": "step_done", "step": 1, "action": "type"}
+{"event": "policy", "step": 2, "action": "click", "decision": "confirm", "risk": "irreversible", "reason": "irreversible action requires human approval"}
+{"event": "control_transfer", "to": "human", "reason": "irreversible action requires human approval"}
+{"event": "escalation_raised", "step": 2, "reason": "irreversible action requires human approval", "request": "evidence/replay_20260918_170835/intervention_request.json"}
+{"event": "control_transfer", "to": "automation", "resolution": "aborted"}
+{"event": "escalation_resolved", "resolution": "aborted", "operator": "op-console", "notes_present": true}

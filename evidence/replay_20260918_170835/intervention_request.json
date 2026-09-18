@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "capability_id": "lookup_member_savings",
+  "capability_version": "1.0.0",
+  "goal": "Open a sub-account for this member and reach confirmation",
+  "step_index": 2,
+  "action": "click",
+  "target_name": "Look Up Member",
+  "reason": "irreversible action requires human approval",
+  "screenshot": "evidence/replay_20260918_170835/needs_approval_2.png",
+  "page_url": "http://localhost:8000/",
+  "page_title": "MidState CU — Core Console",
+  "control": "human",
+  "created_at": 1789765717.175831
+}

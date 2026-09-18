@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0",
+  "resolution": "aborted",
+  "operator": "op-console",
+  "notes": "Declined the action because supervisor approval is required.",
+  "resumed_at": 1789765845.452586
+}

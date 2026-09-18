@@ -1,60 +1,63 @@
 """Deterministic replay: run a saved capability with no LLM in the loop.
 
-Loads the artifact, executes each step with stable role+name locators,
-classifies exceptional states after every step, verifies the checkpoint,
-extracts declared outputs, and returns a typed ReplayResult.
-
-Phase 4: every step passes through the policy gate first (allowlist +
-risk classification) at the same choke point discovery uses. Persisted
-logs carry presence/keys only — never raw regulated data.
-
-Phase 5: when the policy flags an irreversible step (Decision.confirm),
-replay does NOT tear down — it pauses in place (browser stays open),
-cedes control to a human on the same live session, blocks for the
-operator, then resumes (approve / done-manually / abort).
+Phase 4: policy gate before every action.
+Phase 5: same-session human escalation for irreversible actions.
+Phase 5.5: append-only audit trail and audited control-state transitions.
 """
 from __future__ import annotations
-import json, os, re
+
+import json
+import os
+import re
 from datetime import datetime
 from typing import Any
 
 from playwright.sync_api import (
-    sync_playwright, TimeoutError as PWTimeout, Locator as PWLocator,
+    sync_playwright,
+    TimeoutError as PWTimeout,
+    Locator as PWLocator,
 )
 
 from cua.artifact.schema import Capability, Locator, Step, ActionKind, Checkpoint
-from cua.replay.result import ReplayResult, Outcome
+from cua.audit.recorder import RunRecorder
+from cua.escalation.intervention import (
+    InterventionRequest,
+    Resolution,
+    SessionControl,
+    escalate,
+)
 from cua.replay.detectors import detectors_for, DetKind, Detector
+from cua.replay.result import ReplayResult, Outcome
 from cua.safety.policy import Policy, Decision
 from cua.safety.redaction import presence as _redact
-from cua.escalation.intervention import (
-    InterventionRequest, Resolution, SessionControl, escalate,
-)
 
 STEP_TIMEOUT_MS = 5000
 
 
 def _evidence_dir() -> str:
-    d = os.path.join("evidence", "replay_" + datetime.now().strftime("%Y%m%d_%H%M%S"))
-    os.makedirs(d, exist_ok=True)
-    return d
+    directory = os.path.join(
+        "evidence",
+        "replay_" + datetime.now().strftime("%Y%m%d_%H%M%S"),
+    )
+    os.makedirs(directory, exist_ok=True)
+    return directory
 
 
 def _fill(value: str | None, inputs: dict[str, str]) -> str | None:
     if value is None:
         return None
-    out = value
-    for k, v in inputs.items():
-        out = out.replace(f"{{{{{k}}}}}", str(v))
-    return out
+
+    output = value
+
+    for key, input_value in inputs.items():
+        output = output.replace(f"{{{{{key}}}}}", str(input_value))
+
+    return output
 
 
 class ReplaySurface:
-    """The perceive/act seam on the replay path: resolve a Locator, read text.
+    """Browser implementation for deterministic replay."""
 
-    Same role+name contract the artifact recorded. A legacy-web or desktop
-    surface would implement this same interface differently.
-    """
     def __init__(self, headed: bool = False):
         self._pw = sync_playwright().start()
         self._browser = self._pw.chromium.launch(headless=not headed)
@@ -73,25 +76,38 @@ class ReplaySurface:
         return self._page.title()
 
     def resolve(self, loc: Locator) -> PWLocator:
-        for strat in [loc] + loc.fallbacks:
-            t = self._by(strat)
-            if t is not None and t.count() > 0:
-                return t.first
-        raise LookupError(f"No element for role={loc.role!r} name={loc.name!r}")
+        for strategy in [loc] + loc.fallbacks:
+            target = self._by(strategy)
+
+            if target is not None and target.count() > 0:
+                return target.first
+
+        raise LookupError(
+            f"No element for role={loc.role!r} name={loc.name!r}"
+        )
 
     def _by(self, loc: Locator) -> PWLocator | None:
-        p = self._page
+        page = self._page
+
         if loc.strategy == "role_name" and loc.role and loc.name:
-            t = p.get_by_role(loc.role, name=loc.name, exact=True)
-            return t if t.count() else p.get_by_role(loc.role, name=loc.name)
+            target = page.get_by_role(loc.role, name=loc.name, exact=True)
+            return target if target.count() else page.get_by_role(
+                loc.role,
+                name=loc.name,
+            )
+
         if loc.strategy == "text" and loc.text:
-            return p.get_by_text(loc.text)
+            return page.get_by_text(loc.text)
+
         if loc.strategy == "label" and loc.name:
-            return p.get_by_label(loc.name)
+            return page.get_by_label(loc.name)
+
         if loc.strategy == "placeholder" and loc.name:
-            return p.get_by_placeholder(loc.name)
+            return page.get_by_placeholder(loc.name)
+
         if loc.strategy == "nth_role" and loc.role:
-            return p.get_by_role(loc.role).nth(loc.nth or 0)
+            return page.get_by_role(loc.role).nth(loc.nth or 0)
+
         return None
 
     def page_text(self) -> str:
@@ -105,221 +121,555 @@ class ReplaySurface:
         self._pw.stop()
 
 
-def _run_step(surface: ReplaySurface, step: Step, inputs: dict[str, str]) -> None:
+def _run_step(
+    surface: ReplaySurface,
+    step: Step,
+    inputs: dict[str, str],
+) -> None:
     if step.action == ActionKind.navigate:
         surface.goto(step.url)
         return
+
     if step.locator is None:
         raise LookupError(f"step {step.index} has no locator")
+
     target = surface.resolve(step.locator)
     target.wait_for(state="visible", timeout=STEP_TIMEOUT_MS)
+
     if step.action == ActionKind.type:
         target.fill("")
         target.fill(_fill(step.value, inputs) or "")
+
     elif step.action == ActionKind.click:
         target.click()
 
 
-def _detect(page_text: str, dets: list[Detector]) -> Detector | None:
-    for d in dets:
-        if d.match_text in page_text:
-            return d
+def _detect(page_text: str, detectors: list[Detector]) -> Detector | None:
+    for detector in detectors:
+        if detector.match_text in page_text:
+            return detector
+
     return None
 
 
-def _checkpoint_ok(surface: ReplaySurface, cp: Checkpoint, text: str) -> bool:
-    if cp.kind == "text_present":
-        return (cp.value or "") in text
-    if cp.kind == "url_contains":
-        return (cp.value or "") in surface.url()
-    if cp.kind == "role_name_present":
+def _checkpoint_ok(
+    surface: ReplaySurface,
+    checkpoint: Checkpoint,
+    text: str,
+) -> bool:
+    if checkpoint.kind == "text_present":
+        return (checkpoint.value or "") in text
+
+    if checkpoint.kind == "url_contains":
+        return (checkpoint.value or "") in surface.url()
+
+    if checkpoint.kind == "role_name_present":
         try:
-            return surface.resolve(Locator(role=cp.role, name=cp.name)).count() > 0
+            return surface.resolve(
+                Locator(role=checkpoint.role, name=checkpoint.name)
+            ).count() > 0
         except LookupError:
             return False
+
     return False
 
 
-def _extract(surface: ReplaySurface, cap: Capability) -> dict:
+def _extract(surface: ReplaySurface, capability: Capability) -> dict:
     text = surface.page_text()
-    out: dict[str, Any] = {}
-    input_names = {i.name for i in cap.inputs}
-    for f in cap.outputs:
-        if f.name in input_names:
-            continue                      # input echo -> not an extracted output
-        if f.from_text_pattern:
-            m = re.search(f.from_text_pattern, text)
-            if m:
-                out[f.name] = (m.group(1) if m.groups() else m.group(0)).strip()
+    outputs: dict[str, Any] = {}
+
+    input_names = {input_param.name for input_param in capability.inputs}
+
+    for field in capability.outputs:
+        if field.name in input_names:
+            continue
+
+        if field.from_text_pattern:
+            match = re.search(field.from_text_pattern, text)
+
+            if match:
+                outputs[field.name] = (
+                    match.group(1) if match.groups() else match.group(0)
+                ).strip()
             else:
-                out[f.name] = None
-        elif f.source:
+                outputs[field.name] = None
+
+        elif field.source:
             try:
-                out[f.name] = surface.resolve(f.source).inner_text()
+                outputs[field.name] = surface.resolve(field.source).inner_text()
             except LookupError:
-                out[f.name] = None
+                outputs[field.name] = None
+
         else:
-            out[f.name] = None            # declared, no extraction rule -> honest null
-    return out
+            outputs[field.name] = None
+
+    return outputs
 
 
-def replay(artifact_path: str, inputs: dict[str, str], headed: bool = False,
-           policy_path: str = "config/policy.json") -> ReplayResult:
-    cap = Capability.model_validate_json(open(artifact_path).read())
+def replay(
+    artifact_path: str,
+    inputs: dict[str, str],
+    headed: bool = False,
+    policy_path: str = "config/policy.json",
+) -> ReplayResult:
+    capability = Capability.model_validate_json(open(artifact_path).read())
     policy = Policy.load(policy_path)
 
-    required = {i.name for i in cap.inputs if i.required}
-    missing = required - set(inputs)
+    required_inputs = {
+        input_param.name
+        for input_param in capability.inputs
+        if input_param.required
+    }
+
+    missing = required_inputs - set(inputs)
+
     if missing:
         raise SystemExit(f"Missing required inputs: {sorted(missing)}")
 
-    ev = _evidence_dir()
-    log_path = os.path.join(ev, "replay_log.jsonl")
+    evidence_dir = _evidence_dir()
+    run_id = os.path.basename(evidence_dir)
+    recorder = RunRecorder(evidence_dir, run_id)
 
-    def log(obj: dict) -> None:
-        with open(log_path, "a") as fp:
-            fp.write(json.dumps(obj) + "\n")
+    log_path = os.path.join(evidence_dir, "replay_log.jsonl")
 
-    log({"event": "start", "capability": cap.capability_id,
-         "version": cap.version, "inputs": list(inputs.keys())})  # keys only
+    def log(record: dict) -> None:
+        with open(log_path, "a") as file:
+            file.write(json.dumps(record) + "\n")
 
-    dets = detectors_for(cap.app_id)
+    log({
+        "event": "start",
+        "capability": capability.capability_id,
+        "version": capability.version,
+        "inputs": list(inputs.keys()),
+    })
+
+    recorder.audit(
+        event_type="run_started",
+        actor="agent",
+        detail=f"Capability started: {capability.capability_id}",
+    )
+
+    detectors = detectors_for(capability.app_id)
     surface = ReplaySurface(headed=headed)
-    control = SessionControl(log)
+    control = SessionControl(log, recorder)
+
     recoveries: list[str] = []
     attempted = 0
 
-    def fail(step_idx, expected, observed, err) -> ReplayResult:
-        surface.screenshot(os.path.join(ev, f"fail_step_{step_idx}.png"))
-        log({"event": "hard_failure", "step": step_idx, "error": err})
+    def fail(
+        step_index: int,
+        expected: str,
+        observed: str,
+        error: str,
+    ) -> ReplayResult:
+        screenshot = os.path.join(
+            evidence_dir,
+            f"fail_step_{step_index}.png",
+        )
+
+        surface.screenshot(screenshot)
+
+        log({
+            "event": "hard_failure",
+            "step": step_index,
+            "error": error,
+        })
+
+        recorder.audit(
+            event_type="hard_failure",
+            actor="agent",
+            evidence_ref=screenshot,
+            detail=error,
+        )
+
         return ReplayResult(
-            outcome=Outcome.failure, capability_id=cap.capability_id,
-            capability_version=cap.version, failed_step_index=step_idx,
-            expected=expected, observed=observed, error=err,
-            steps_attempted=attempted, recoveries=recoveries, evidence_dir=ev)
+            outcome=Outcome.failure,
+            capability_id=capability.capability_id,
+            capability_version=capability.version,
+            failed_step_index=step_index,
+            expected=expected,
+            observed=observed,
+            error=error,
+            steps_attempted=attempted,
+            recoveries=recoveries,
+            evidence_dir=evidence_dir,
+        )
 
     try:
-        for step in cap.steps:
+        for step in capability.steps:
             attempted += 1
 
-            # --- policy gate: same choke point discovery uses ---
-            tname = step.locator.name if step.locator else None
-            pr = policy.evaluate(step.action.value, url=step.url,
-                                 target_name=tname,
-                                 declared_risk=getattr(step, "risk", None))
-            log({"event": "policy", "step": step.index, "action": step.action.value,
-                 "decision": pr.decision.value, "risk": pr.risk.value, "reason": pr.reason})
-            if pr.decision is Decision.block:
-                surface.screenshot(os.path.join(ev, f"policy_block_{step.index}.png"))
+            target_name = step.locator.name if step.locator else None
+
+            policy_result = policy.evaluate(
+                step.action.value,
+                url=step.url,
+                target_name=target_name,
+                declared_risk=getattr(step, "risk", None),
+            )
+
+            log({
+                "event": "policy",
+                "step": step.index,
+                "action": step.action.value,
+                "decision": policy_result.decision.value,
+                "risk": policy_result.risk.value,
+                "reason": policy_result.reason,
+            })
+
+            if policy_result.decision is Decision.block:
+                screenshot = os.path.join(
+                    evidence_dir,
+                    f"policy_block_{step.index}.png",
+                )
+
+                surface.screenshot(screenshot)
+
+                recorder.audit(
+                    event_type="hard_failure",
+                    actor="agent",
+                    action=step.action.value,
+                    evidence_ref=screenshot,
+                    detail=f"Policy blocked action: {policy_result.reason}",
+                )
+
                 return ReplayResult(
-                    outcome=Outcome.failure, capability_id=cap.capability_id,
-                    capability_version=cap.version, failed_step_index=step.index,
-                    expected="action permitted by policy", observed=pr.reason,
-                    error=f"policy_block: {pr.reason}", steps_attempted=attempted,
-                    recoveries=recoveries, evidence_dir=ev)
+                    outcome=Outcome.failure,
+                    capability_id=capability.capability_id,
+                    capability_version=capability.version,
+                    failed_step_index=step.index,
+                    expected="action permitted by policy",
+                    observed=policy_result.reason,
+                    error=f"policy_block: {policy_result.reason}",
+                    steps_attempted=attempted,
+                    recoveries=recoveries,
+                    evidence_dir=evidence_dir,
+                )
 
-            # --- Phase 5: irreversible step -> escalate on the SAME live session ---
-            if pr.decision is Decision.confirm:
-                shot = os.path.join(ev, f"needs_approval_{step.index}.png")
-                surface.screenshot(shot)
-                req = InterventionRequest(
-                    capability_id=cap.capability_id,
-                    capability_version=cap.version, goal=cap.description,
-                    step_index=step.index, action=step.action.value,
-                    target_name=tname, reason=pr.reason, screenshot=shot,
-                    page_url=surface.url(), page_title=surface.title())
-                print(f"\n⚠  ESCALATION at step {step.index}: {pr.reason}"
-                      f"\n   operator: python scripts/operator_console.py --run {ev}\n")
-                resp = escalate(ev, req, control, log)   # blocks; page stays open
-                if resp.resolution is Resolution.aborted:
-                    surface.screenshot(os.path.join(ev, f"aborted_{step.index}.png"))
+            if policy_result.decision is Decision.confirm:
+                screenshot = os.path.join(
+                    evidence_dir,
+                    f"needs_approval_{step.index}.png",
+                )
+
+                surface.screenshot(screenshot)
+
+                request = InterventionRequest(
+                    capability_id=capability.capability_id,
+                    capability_version=capability.version,
+                    goal=capability.description,
+                    step_index=step.index,
+                    action=step.action.value,
+                    target_name=target_name,
+                    reason=policy_result.reason,
+                    screenshot=screenshot,
+                    page_url=surface.url(),
+                    page_title=surface.title(),
+                )
+
+                print(
+                    f"\n⚠  ESCALATION at step {step.index}: "
+                    f"{policy_result.reason}"
+                    f"\n   operator: python scripts/operator_console.py "
+                    f"--run {evidence_dir}\n"
+                )
+
+                response = escalate(
+                    evidence_dir,
+                    request,
+                    control,
+                    log,
+                    recorder,
+                )
+
+                if response.resolution is Resolution.aborted:
+                    abort_screenshot = os.path.join(
+                        evidence_dir,
+                        f"aborted_{step.index}.png",
+                    )
+
+                    surface.screenshot(abort_screenshot)
+
                     return ReplayResult(
-                        outcome=Outcome.failure, capability_id=cap.capability_id,
-                        capability_version=cap.version, failed_step_index=step.index,
-                        needs_human=True, expected="approved irreversible action",
-                        observed=f"operator aborted: {resp.notes}",
-                        error="operator_aborted", steps_attempted=attempted,
-                        recoveries=recoveries, evidence_dir=ev)
-                if resp.resolution is Resolution.completed:
-                    log({"event": "human_completed_step", "step": step.index})
-                    continue              # human did it on the live session; checkpoint verifies
-                log({"event": "human_approved_step", "step": step.index})
-                # approved -> fall through to the act block below and execute it
+                        outcome=Outcome.failure,
+                        capability_id=capability.capability_id,
+                        capability_version=capability.version,
+                        failed_step_index=step.index,
+                        needs_human=True,
+                        expected="approved irreversible action",
+                        observed=f"operator aborted: {response.notes}",
+                        error="operator_aborted",
+                        steps_attempted=attempted,
+                        recoveries=recoveries,
+                        evidence_dir=evidence_dir,
+                    )
 
-            # --- act ---
+                if response.resolution is Resolution.completed:
+                    log({
+                        "event": "human_completed_step",
+                        "step": step.index,
+                    })
+
+                    recorder.audit(
+                        event_type="step_executed",
+                        actor="human",
+                        action=step.action.value,
+                        detail="Human completed flagged step manually",
+                    )
+
+                    continue
+
+                log({
+                    "event": "human_approved_step",
+                    "step": step.index,
+                })
+
             try:
                 _run_step(surface, step, inputs)
-            except LookupError as e:
-                loc = step.locator
-                return fail(step.index,
-                            f"element {loc.role}/{loc.name}" if loc else "element",
-                            "element not found", str(e))
-            except PWTimeout as e:
-                return fail(step.index, "step to complete", "timed out", str(e))
 
-            log({"event": "step_done", "step": step.index, "action": step.action.value})
+            except LookupError as error:
+                locator = step.locator
 
-            hit = _detect(surface.page_text(), dets)
-            if hit:
-                res = _on_detect(surface, step, hit, cap, ev, log, recoveries, attempted)
-                if res is not None:
-                    return res            # business/hard -> stop; recoverable -> continue
+                return fail(
+                    step.index,
+                    (
+                        f"element {locator.role}/{locator.name}"
+                        if locator
+                        else "element"
+                    ),
+                    "element not found",
+                    str(error),
+                )
+
+            except PWTimeout as error:
+                return fail(
+                    step.index,
+                    "step to complete",
+                    "timed out",
+                    str(error),
+                )
+
+            log({
+                "event": "step_done",
+                "step": step.index,
+                "action": step.action.value,
+            })
+
+            recorder.audit(
+                event_type="step_executed",
+                actor="agent",
+                action=step.action.value,
+                detail=f"Completed step {step.index}",
+            )
+
+            detected = _detect(surface.page_text(), detectors)
+
+            if detected:
+                result = _on_detect(
+                    surface,
+                    step,
+                    detected,
+                    capability,
+                    evidence_dir,
+                    log,
+                    recorder,
+                    recoveries,
+                    attempted,
+                )
+
+                if result is not None:
+                    return result
 
         text = surface.page_text()
-        if not _checkpoint_ok(surface, cap.success, text):
-            surface.screenshot(os.path.join(ev, "fail_checkpoint.png"))
-            log({"event": "checkpoint_failed", "expected": cap.success.value})
-            return ReplayResult(
-                outcome=Outcome.failure, capability_id=cap.capability_id,
-                capability_version=cap.version,
-                expected=f"checkpoint {cap.success.value!r} satisfied",
-                observed="not satisfied", error="checkpoint failed",
-                steps_attempted=attempted, recoveries=recoveries, evidence_dir=ev)
 
-        outputs = _extract(surface, cap)
-        surface.screenshot(os.path.join(ev, "success.png"))
-        log({"event": "success", "outputs": _redact(outputs)})
+        if not _checkpoint_ok(surface, capability.success, text):
+            screenshot = os.path.join(
+                evidence_dir,
+                "fail_checkpoint.png",
+            )
+
+            surface.screenshot(screenshot)
+
+            log({
+                "event": "checkpoint_failed",
+                "expected": capability.success.value,
+            })
+
+            recorder.audit(
+                event_type="hard_failure",
+                actor="agent",
+                evidence_ref=screenshot,
+                detail="Success checkpoint failed",
+            )
+
+            return ReplayResult(
+                outcome=Outcome.failure,
+                capability_id=capability.capability_id,
+                capability_version=capability.version,
+                expected=(
+                    f"checkpoint {capability.success.value!r} satisfied"
+                ),
+                observed="not satisfied",
+                error="checkpoint failed",
+                steps_attempted=attempted,
+                recoveries=recoveries,
+                evidence_dir=evidence_dir,
+            )
+
+        outputs = _extract(surface, capability)
+
+        success_screenshot = os.path.join(
+            evidence_dir,
+            "success.png",
+        )
+
+        surface.screenshot(success_screenshot)
+
+        log({
+            "event": "success",
+            "outputs": _redact(outputs),
+        })
+
+        recorder.audit(
+            event_type="run_completed",
+            actor="agent",
+            evidence_ref=success_screenshot,
+            detail="Replay completed successfully",
+        )
+
         return ReplayResult(
-            outcome=Outcome.success, capability_id=cap.capability_id,
-            capability_version=cap.version, outputs=outputs,
-            steps_attempted=attempted, recoveries=recoveries, evidence_dir=ev)
+            outcome=Outcome.success,
+            capability_id=capability.capability_id,
+            capability_version=capability.version,
+            outputs=outputs,
+            steps_attempted=attempted,
+            recoveries=recoveries,
+            evidence_dir=evidence_dir,
+        )
+
     finally:
         surface.close()
 
 
-def _on_detect(surface, step, hit, cap, ev, log, recoveries, attempted) -> ReplayResult | None:
-    if hit.kind == DetKind.business:
-        surface.screenshot(os.path.join(ev, f"business_{hit.code}.png"))
-        log({"event": "business_outcome", "code": hit.code, "step": step.index})
-        return ReplayResult(
-            outcome=Outcome.business_outcome, capability_id=cap.capability_id,
-            capability_version=cap.version, business_code=hit.code,
-            business_message=hit.message, steps_attempted=attempted,
-            recoveries=recoveries, evidence_dir=ev)
+def _on_detect(
+    surface: ReplaySurface,
+    step: Step,
+    detected: Detector,
+    capability: Capability,
+    evidence_dir: str,
+    log,
+    recorder: RunRecorder,
+    recoveries: list[str],
+    attempted: int,
+) -> ReplayResult | None:
+    if detected.kind == DetKind.business:
+        screenshot = os.path.join(
+            evidence_dir,
+            f"business_{detected.code}.png",
+        )
 
-    if hit.kind == DetKind.recoverable:
-        for attempt in range(hit.max_retries):
-            recoveries.append(f"{hit.code}:{hit.recovery}")
-            log({"event": "recovery", "code": hit.code,
-                 "action": hit.recovery, "attempt": attempt + 1})
-            if hit.recovery == "reload":
+        surface.screenshot(screenshot)
+
+        log({
+            "event": "business_outcome",
+            "code": detected.code,
+            "step": step.index,
+        })
+
+        recorder.audit(
+            event_type="business_outcome",
+            actor="agent",
+            action=step.action.value,
+            evidence_ref=screenshot,
+            detail=detected.code,
+        )
+
+        return ReplayResult(
+            outcome=Outcome.business_outcome,
+            capability_id=capability.capability_id,
+            capability_version=capability.version,
+            business_code=detected.code,
+            business_message=detected.message,
+            steps_attempted=attempted,
+            recoveries=recoveries,
+            evidence_dir=evidence_dir,
+        )
+
+    if detected.kind == DetKind.recoverable:
+        for attempt in range(detected.max_retries):
+            recoveries.append(f"{detected.code}:{detected.recovery}")
+
+            log({
+                "event": "recovery",
+                "code": detected.code,
+                "action": detected.recovery,
+                "attempt": attempt + 1,
+            })
+
+            if detected.recovery == "reload":
                 surface.reload()
-            if _detect(surface.page_text(), [hit]) is None:
-                return None               # recovered -> continue the flow
-        surface.screenshot(os.path.join(ev, f"unrecovered_{hit.code}.png"))
-        log({"event": "unrecovered", "code": hit.code})
-        return ReplayResult(
-            outcome=Outcome.failure, capability_id=cap.capability_id,
-            capability_version=cap.version, failed_step_index=step.index,
-            expected="recoverable condition to clear",
-            observed=f"{hit.code} persisted after {hit.max_retries} retry",
-            error=hit.message, steps_attempted=attempted,
-            recoveries=recoveries, evidence_dir=ev)
 
-    surface.screenshot(os.path.join(ev, f"hard_{hit.code}.png"))
+            if _detect(surface.page_text(), [detected]) is None:
+                return None
+
+        screenshot = os.path.join(
+            evidence_dir,
+            f"unrecovered_{detected.code}.png",
+        )
+
+        surface.screenshot(screenshot)
+
+        log({
+            "event": "unrecovered",
+            "code": detected.code,
+        })
+
+        recorder.audit(
+            event_type="hard_failure",
+            actor="agent",
+            evidence_ref=screenshot,
+            detail=f"Recoverable state persisted: {detected.code}",
+        )
+
+        return ReplayResult(
+            outcome=Outcome.failure,
+            capability_id=capability.capability_id,
+            capability_version=capability.version,
+            failed_step_index=step.index,
+            expected="recoverable condition to clear",
+            observed=(
+                f"{detected.code} persisted after "
+                f"{detected.max_retries} retry"
+            ),
+            error=detected.message,
+            steps_attempted=attempted,
+            recoveries=recoveries,
+            evidence_dir=evidence_dir,
+        )
+
+    screenshot = os.path.join(
+        evidence_dir,
+        f"hard_{detected.code}.png",
+    )
+
+    surface.screenshot(screenshot)
+
+    recorder.audit(
+        event_type="hard_failure",
+        actor="agent",
+        evidence_ref=screenshot,
+        detail=detected.code,
+    )
+
     return ReplayResult(
-        outcome=Outcome.failure, capability_id=cap.capability_id,
-        capability_version=cap.version, failed_step_index=step.index,
-        expected="no blocking condition", observed=hit.code,
-        error=hit.message, steps_attempted=attempted,
-        recoveries=recoveries, evidence_dir=ev)
+        outcome=Outcome.failure,
+        capability_id=capability.capability_id,
+        capability_version=capability.version,
+        failed_step_index=step.index,
+        expected="no blocking condition",
+        observed=detected.code,
+        error=detected.message,
+        steps_attempted=attempted,
+        recoveries=recoveries,
+        evidence_dir=evidence_dir,
+    )

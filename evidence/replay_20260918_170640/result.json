@@ -1,0 +1,16 @@
+{
+  "outcome": "business_outcome",
+  "capability_id": "lookup_member_savings",
+  "capability_version": "1.0.0",
+  "outputs": {},
+  "business_code": "no_such_member",
+  "business_message": "No member exists for the supplied ID.",
+  "needs_human": false,
+  "failed_step_index": null,
+  "expected": null,
+  "observed": null,
+  "error": null,
+  "steps_attempted": 3,
+  "recoveries": [],
+  "evidence_dir": "evidence/replay_20260918_170640"
+}

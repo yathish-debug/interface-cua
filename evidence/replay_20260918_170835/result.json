@@ -1,0 +1,16 @@
+{
+  "outcome": "failure",
+  "capability_id": "lookup_member_savings",
+  "capability_version": "1.0.0",
+  "outputs": {},
+  "business_code": null,
+  "business_message": null,
+  "needs_human": true,
+  "failed_step_index": 2,
+  "expected": "approved irreversible action",
+  "observed": "operator aborted: Declined the action because supervisor approval is required.",
+  "error": "operator_aborted",
+  "steps_attempted": 3,
+  "recoveries": [],
+  "evidence_dir": "evidence/replay_20260918_170835"
+}

@@ -1,0 +1,4 @@
+{"run_id":"replay_20260918_170835","ts":"2026-09-18T21:08:37.177129+00:00","from_state":"AGENT","to_state":"PAUSED","controller":"agent","reason":"irreversible action requires human approval"}
+{"run_id":"replay_20260918_170835","ts":"2026-09-18T21:08:37.177207+00:00","from_state":"PAUSED","to_state":"HUMAN","controller":"human","reason":"irreversible action requires human approval"}
+{"run_id":"replay_20260918_170835","ts":"2026-09-18T21:10:45.675601+00:00","from_state":"HUMAN","to_state":"RESUMING","controller":"human","reason":"Human resolution: aborted"}
+{"run_id":"replay_20260918_170835","ts":"2026-09-18T21:10:45.675946+00:00","from_state":"RESUMING","to_state":"AGENT","controller":"agent","reason":"Automation resumed after: aborted"}
